@@ -1,0 +1,37 @@
+{
+  "name": "bridgeit-adapters",
+  "version": "0.0.1",
+  "description": "BridgeIt Adapters Module.  Adapters for communicating with other internal and external services.",
+  "author": "ICEsoft Technologies Inc.",
+  "keywords": "bridgeit adapters common tools utilities",
+  "homepage": "http://bridgeit.mobi/",
+  "bugs": {
+    "url": "http://bridgeit.mobi/forum/",
+    "email": "bridgeit@icesoft.com"
+  },
+  "license": "Apache-2.0",
+  "main": "index",
+  "directories": {
+    "lib": "./lib",
+    "docs": "./docs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bridgeit/bridgeit-adapters"
+  },
+  "dependencies": {
+      "firebase": "^2.0.6",
+      "lodash": "^2.4.1",
+      "request": "^2.51.0",
+      "twit": "^1.1.18"
+  },
+  "devDependencies": {
+    "should": "latest",
+    "supertest": "latest",
+    "assert": "latest"
+  },
+  "engines": {
+    "node": "0.11.x"
+  },
+  "private": false
+}
