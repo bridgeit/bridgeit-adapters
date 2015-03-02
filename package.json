@@ -20,11 +20,12 @@
         "url": "https://github.com/bridgeit/bridgeit-adapters"
     },
     "dependencies": {
-        "lodash": "^2.4.1",
-        "superagent": "^0.21.0",
+        "lodash": "^3.3.0",
+        "superagent": "^0.21.0"
     },
     "devDependencies": {
         "should": "latest",
+        "grunt-bump": "^0.3.0",
         "supertest": "latest",
         "assert": "latest"
     },
