@@ -108,7 +108,7 @@ function executeAdapter(adapterParams, cb) {
             return;
         }
 
-        adapterInstance.execute(adapterParams.config, function (responseErr, adapterResponse) {
+        adapterInstance.execute(adapterParams, function (responseErr, adapterResponse) {
 
             if (responseErr) {
                 cb(responseErr);
@@ -122,5 +122,97 @@ function executeAdapter(adapterParams, cb) {
 
 }
 module.exports.executeAdapter = executeAdapter;
+
+/**
+ * Execute an array of named adapters with their associated configurations.  The execution is done
+ * and parallel.
+ *
+ * @param {Array} adapters array of named adapters and their associated configurations
+ * @returns The results from executing.
+ *
+ */
+function executeAdapters(adapters, templateValues, cb) {
+
+    async.map(adapters, function (currentRequest, requestCallback) {
+
+            //Before executing an adapter, we need to replace any dynamic template
+            //values in the config section.  First we replace the basics.
+            //TODO: Use service token rather than user's token.
+            var expansionValues = {
+                dot: '.',
+                dbOp: '$',
+                account: barrel.accountId,
+                realm: barrel.realmId,
+                access_token: barrel.accessToken,
+                contextId: barrel.contextId,
+                boolTrue: 'true',
+                boolFalse: 'false'
+            };
+            logger.debug('default expansion values:', JSON.stringify(expansionValues, null, 4));
+            currentRequest.adapter.config = expand(currentRequest.adapter.config, expansionValues);
+            currentRequest.adapter.config.context = {};
+
+            //The payload of the request can contain custom values supplied
+            //by the user.  We need to be careful here as we don't want to let
+            //rogue code loose.
+            //TODO: validate expansion values
+            if (barrel.payload) {
+                var userExpansionValues = barrel.payload;
+                logger.debug('user expansion values:', JSON.stringify(userExpansionValues, null, 4));
+                currentRequest.adapter.config = expand(currentRequest.adapter.config, userExpansionValues);
+                currentRequest.adapter.config.context.properties = userExpansionValues;
+            }
+
+            if(barrel.requestsData){
+
+                if(barrel.requestsData.users){
+                    currentRequest.adapter.config.context.users = barrel.requestsData.users;
+                }
+
+                if(barrel.requestsData.data){
+                    currentRequest.adapter.config.context.data = barrel.requestsData.data;
+                }
+            }
+
+            logger.debug('final expanded request:\n', JSON.stringify(currentRequest, null, 4));
+
+            badapts.executeAdapter(currentRequest.adapter, function (err, adapterResponse) {
+
+                if (err) {
+                    logger.error('could not execute request', currentRequest.name, err);
+                    requestCallback(err);
+                    return;
+                }
+
+                logger.debug('response', currentRequest.name, adapterResponse);
+
+                var parsedResponse = typeof adapterResponse === 'string' ? JSON.parse(adapterResponse) : adapterResponse;
+                var taggedResponse = parsedResponse;
+                if (!ld.isArray(parsedResponse)) {
+                    taggedResponse = {};
+                    taggedResponse[currentRequest.name] = parsedResponse;
+                }
+                logger.debug('final results for ' + currentRequest.name, taggedResponse);
+                requestCallback(null, taggedResponse);
+            });
+
+        },
+        function (err, cummulativeRequestResults) {
+
+            if (err) {
+                //Not sure if we should kill the whole thing or let it keep going with the
+                //data it did accumulate.
+                logger.error(err);
+                cb(err);
+                return;
+            }
+
+            logger.debug('completed requests:', cummulativeRequestResults);
+            cb(null, cummulativeRequestResults);
+        }
+    );
+}
+module.exports.executeAdapters = executeAdapters;
+
 
 
