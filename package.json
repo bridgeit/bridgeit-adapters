@@ -1,6 +1,6 @@
 {
   "name": "bridgeit-adapters",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "BridgeIt Adapters Module.  Adapters for communicating with other internal and external services.",
   "author": "ICEsoft Technologies Inc.",
   "keywords": "bridgeit adapters common tools utilities",
