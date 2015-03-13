@@ -1,4 +1,9 @@
 var ld = require('lodash');
+var expand = require('json-templater/object');
+var async = require('async');
+var util = require('util');
+var log = util.debuglog('adapters');
+
 
 var requiredAdapterParams = ['name', 'location', 'config'];
 
@@ -75,40 +80,59 @@ module.exports.getCoreAdapterInstance = getCoreAdapterInstance;
 
 
 /**
- * Provide the name (e.g. basicbridgeit) and location (e.g. core) of the
- * adapter as well as the configuration settings.  This function will use
- * the information to get an instance of the adapter, execute it using the
- * configuration, and return the results.
+ * Resolves any templated values in an Object with the values specified in another Object.
  *
- * @param params
- * @param cb
+ * @param {Object} template Object containing the templated sections (e.g. {{foo}}).
+ * @param {Object} values Object containing the values to substitute into the template (e.g. { foo:bar }.
+ * @returns An object with the templated parts replaced with the values.
+ *
  */
+function resolveTemplate(template, values) {
+
+    //Some default expansion values that always get expanded.
+    var defaultExpansionValues = {
+        dot: '.',
+        dbOp: '$',
+        boolTrue: 'true',
+        boolFalse: 'false'
+    };
+
+    var expanded = expand(template, defaultExpansionValues);
+
+    if(values){
+        expanded = expand(expanded, values);
+    }
+
+    return expanded;
+}
+module.exports.resolveTemplate = resolveTemplate;
+
 
 /**
  * Execute a named adapter.
  *
- * @param {Object} adapterParams Object containing the required parameters
- * @param {String} adapterParams.name The name of the adapter as used by require() (e.g. basicbridgeit).
- * @param {String} adapterParams.location The location of the adapter (currently only 'core' is supported).
- * @param {Object} adapterParams.config An object with all the required settings for executing the adapter.
+ * @param {Object} adapter Object containing the required parameters
+ * @param {String} adapter.name The name of the adapter as used by require() (e.g. basicbridgeit).
+ * @param {String} adapter.location The location of the adapter (currently only 'core' is supported).
+ * @param {Object} adapter.config An object with all the required settings for executing the adapter.
  * @returns The results from a successful execution or an error.
  *
  */
-function executeAdapter(adapterParams, cb) {
+function executeAdapter(adapter, cb) {
 
-    if (!adapterParams || !adapterParams.name || !adapterParams.location || !adapterParams.config) {
+    if (!adapter || !adapter.name || !adapter.location || !adapter.config) {
         cb(new Error('requestBadParameter', 'missing adapter parameters'));
         return;
     }
 
-    getAdapterInstance(adapterParams, function (instanceErr, adapterInstance) {
+    getAdapterInstance(adapter, function (instanceErr, adapterInstance) {
 
         if (instanceErr || !adapterInstance) {
             cb(instanceErr);
             return;
         }
 
-        adapterInstance.execute(adapterParams, function (responseErr, adapterResponse) {
+        adapterInstance.execute(adapter, function (responseErr, adapterResponse) {
 
             if (responseErr) {
                 cb(responseErr);
@@ -125,90 +149,39 @@ module.exports.executeAdapter = executeAdapter;
 
 /**
  * Execute an array of named adapters with their associated configurations.  The execution is done
- * and parallel.
+ * in parallel.  All template expansion/resolution needs to be done before calling this function.
+ * If the adapter should be sending some information, it should be included as part of the configuration,
+ * typically in adapter.config.body.
  *
- * @param {Array} adapters array of named adapters and their associated configurations
- * @returns The results from executing.
+ * @param {Array} adapters An array of named adapters and their associated configurations.
+ *
+ * @returns The accumulated results from executing all the adapters.
  *
  */
-function executeAdapters(adapters, templateValues, cb) {
+function executeAdapters(adapters, cb) {
 
-    async.map(adapters, function (currentRequest, requestCallback) {
+    async.map(adapters, function (currentAdapter, requestCallback) {
 
-            //Before executing an adapter, we need to replace any dynamic template
-            //values in the config section.  First we replace the basics.
-            //TODO: Use service token rather than user's token.
-            var expansionValues = {
-                dot: '.',
-                dbOp: '$',
-                account: barrel.accountId,
-                realm: barrel.realmId,
-                access_token: barrel.accessToken,
-                contextId: barrel.contextId,
-                boolTrue: 'true',
-                boolFalse: 'false'
-            };
-            logger.debug('default expansion values:', JSON.stringify(expansionValues, null, 4));
-            currentRequest.adapter.config = expand(currentRequest.adapter.config, expansionValues);
-            currentRequest.adapter.config.context = {};
-
-            //The payload of the request can contain custom values supplied
-            //by the user.  We need to be careful here as we don't want to let
-            //rogue code loose.
-            //TODO: validate expansion values
-            if (barrel.payload) {
-                var userExpansionValues = barrel.payload;
-                logger.debug('user expansion values:', JSON.stringify(userExpansionValues, null, 4));
-                currentRequest.adapter.config = expand(currentRequest.adapter.config, userExpansionValues);
-                currentRequest.adapter.config.context.properties = userExpansionValues;
-            }
-
-            if(barrel.requestsData){
-
-                if(barrel.requestsData.users){
-                    currentRequest.adapter.config.context.users = barrel.requestsData.users;
-                }
-
-                if(barrel.requestsData.data){
-                    currentRequest.adapter.config.context.data = barrel.requestsData.data;
-                }
-            }
-
-            logger.debug('final expanded request:\n', JSON.stringify(currentRequest, null, 4));
-
-            badapts.executeAdapter(currentRequest.adapter, function (err, adapterResponse) {
+            executeAdapter(currentAdapter, function (err, adapterResponse) {
 
                 if (err) {
-                    logger.error('could not execute request', currentRequest.name, err);
-                    requestCallback(err);
-                    return;
+                    //If there is an error, just return it as an object so that we don't
+                    //short circuit the other adapters.
+                    adapterResponse = {adapter: currentAdapter, error: err};
                 }
 
-                logger.debug('response', currentRequest.name, adapterResponse);
-
-                var parsedResponse = typeof adapterResponse === 'string' ? JSON.parse(adapterResponse) : adapterResponse;
-                var taggedResponse = parsedResponse;
-                if (!ld.isArray(parsedResponse)) {
-                    taggedResponse = {};
-                    taggedResponse[currentRequest.name] = parsedResponse;
-                }
-                logger.debug('final results for ' + currentRequest.name, taggedResponse);
-                requestCallback(null, taggedResponse);
+                requestCallback(null, adapterResponse);
             });
 
         },
-        function (err, cummulativeRequestResults) {
+        function (err, resultsArray) {
 
             if (err) {
-                //Not sure if we should kill the whole thing or let it keep going with the
-                //data it did accumulate.
-                logger.error(err);
                 cb(err);
                 return;
             }
 
-            logger.debug('completed requests:', cummulativeRequestResults);
-            cb(null, cummulativeRequestResults);
+            cb(null, resultsArray);
         }
     );
 }
