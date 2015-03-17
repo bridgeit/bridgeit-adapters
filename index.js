@@ -160,7 +160,7 @@ module.exports.executeAdapter = executeAdapter;
  */
 function executeAdapters(adapters, cb) {
 
-    async.map(adapters, function (currentAdapter, requestCallback) {
+    async.map(adapters, function (currentAdapter, adaptersCallback) {
 
             executeAdapter(currentAdapter, function (err, adapterResponse) {
 
@@ -170,7 +170,7 @@ function executeAdapters(adapters, cb) {
                     adapterResponse = {adapter: currentAdapter, error: err};
                 }
 
-                requestCallback(null, adapterResponse);
+                adaptersCallback(null, adapterResponse);
             });
 
         },

@@ -46,7 +46,7 @@ describe('basicpush', function () {
     var pushId;
     var groupName = 'adapterTestPushGroup';
 
-    it('registered for a push id', function (done) {
+    it('register for a push id', function (done) {
 
         var pushIdSettings = {
             location: 'core',
@@ -83,7 +83,7 @@ describe('basicpush', function () {
         });
     });
 
-    it('created a group', function (done) {
+    it('create a group', function (done) {
 
         var createGroupSettings = {
             location: 'core',
@@ -113,7 +113,7 @@ describe('basicpush', function () {
         });
     });
 
-    it('sent a push', function (done) {
+    it('send a push', function (done) {
 
         var sendPushSettings = {
             location: 'core',
